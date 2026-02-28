@@ -1,19 +1,28 @@
 import { Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import User from '../models/User.js';
+import { supabase } from '../supabase.js';
 
 export const login = async (req: Request, res: Response) => {
     const { username, password } = req.body;
     try {
-        const user = await User.findOne({ username });
-        if (!user) return res.status(404).json({ message: 'User not found' });
+        // Supabase Auth typically uses email. If the user uses username, 
+        // we might need to map it or use a custom table.
+        // For this integration, we'll assume the username is used as the email or 
+        // that the user has set up Supabase Auth accordingly.
+        
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: `${username}@portfolio.com`, // Mocking email if only username is provided
+            password: password,
+        });
 
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
+        if (error) return res.status(401).json({ message: error.message });
 
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
-        res.json({ token, user: { id: user._id, username: user.username } });
+        res.json({ 
+            token: data.session?.access_token, 
+            user: { 
+                id: data.user?.id, 
+                username: username 
+            } 
+        });
     } catch (error: any) {
         res.status(500).json({ message: error.message });
     }
@@ -22,10 +31,14 @@ export const login = async (req: Request, res: Response) => {
 export const register = async (req: Request, res: Response) => {
     const { username, password } = req.body;
     try {
-        const hashedPassword = await bcrypt.hash(password, 12);
-        const user = new User({ username, password: hashedPassword });
-        await user.save();
-        res.status(201).json({ message: 'User registered' });
+        const { data, error } = await supabase.auth.signUp({
+            email: `${username}@portfolio.com`,
+            password: password,
+        });
+
+        if (error) return res.status(400).json({ message: error.message });
+        
+        res.status(201).json({ message: 'User registered', user: data.user });
     } catch (error: any) {
         res.status(500).json({ message: error.message });
     }

@@ -1,20 +1,30 @@
 import { Request, Response } from 'express';
-import Education from '../models/Education.js';
+import { supabase } from '../supabase.js';
 
 export const getEducations = async (req: Request, res: Response) => {
     try {
-        const educations = await Education.find().sort({ createdAt: -1 });
-        res.json(educations);
+        const { data, error } = await supabase
+            .from('educations')
+            .select('*')
+            .order('year', { ascending: false });
+        
+        if (error) throw error;
+        res.json(data.map(item => ({ ...item, _id: item.id })));
     } catch (error: any) {
         res.status(500).json({ message: error.message });
     }
 };
 
 export const createEducation = async (req: Request, res: Response) => {
-    const education = new Education(req.body);
     try {
-        const newEducation = await education.save();
-        res.status(201).json(newEducation);
+        const { data, error } = await supabase
+            .from('educations')
+            .insert([req.body])
+            .select()
+            .single();
+        
+        if (error) throw error;
+        res.status(201).json({ ...data, _id: data.id });
     } catch (error: any) {
         res.status(400).json({ message: error.message });
     }
@@ -22,8 +32,15 @@ export const createEducation = async (req: Request, res: Response) => {
 
 export const updateEducation = async (req: Request, res: Response) => {
     try {
-        const updatedEducation = await Education.findByIdAndUpdate(req.params.id, req.body, { new: true });
-        res.json(updatedEducation);
+        const { data, error } = await supabase
+            .from('educations')
+            .update(req.body)
+            .eq('id', req.params.id)
+            .select()
+            .single();
+        
+        if (error) throw error;
+        res.json({ ...data, _id: data.id });
     } catch (error: any) {
         res.status(400).json({ message: error.message });
     }
@@ -31,7 +48,12 @@ export const updateEducation = async (req: Request, res: Response) => {
 
 export const deleteEducation = async (req: Request, res: Response) => {
     try {
-        await Education.findByIdAndDelete(req.params.id);
+        const { error } = await supabase
+            .from('educations')
+            .delete()
+            .eq('id', req.params.id);
+        
+        if (error) throw error;
         res.json({ message: 'Education deleted' });
     } catch (error: any) {
         res.status(500).json({ message: error.message });

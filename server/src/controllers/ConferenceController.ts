@@ -1,20 +1,30 @@
 import { Request, Response } from 'express';
-import Conference from '../models/Conference.js';
+import { supabase } from '../supabase.js';
 
 export const getConferences = async (req: Request, res: Response) => {
     try {
-        const conferences = await Conference.find().sort({ createdAt: -1 });
-        res.json(conferences);
+        const { data, error } = await supabase
+            .from('conferences')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        res.json(data.map(item => ({ ...item, _id: item.id })));
     } catch (error: any) {
         res.status(500).json({ message: error.message });
     }
 };
 
 export const createConference = async (req: Request, res: Response) => {
-    const conference = new Conference(req.body);
     try {
-        const newConference = await conference.save();
-        res.status(201).json(newConference);
+        const { data, error } = await supabase
+            .from('conferences')
+            .insert([req.body])
+            .select()
+            .single();
+        
+        if (error) throw error;
+        res.status(201).json({ ...data, _id: data.id });
     } catch (error: any) {
         res.status(400).json({ message: error.message });
     }
@@ -22,8 +32,15 @@ export const createConference = async (req: Request, res: Response) => {
 
 export const updateConference = async (req: Request, res: Response) => {
     try {
-        const updatedConference = await Conference.findByIdAndUpdate(req.params.id, req.body, { new: true });
-        res.json(updatedConference);
+        const { data, error } = await supabase
+            .from('conferences')
+            .update(req.body)
+            .eq('id', req.params.id)
+            .select()
+            .single();
+        
+        if (error) throw error;
+        res.json({ ...data, _id: data.id });
     } catch (error: any) {
         res.status(400).json({ message: error.message });
     }
@@ -31,7 +48,12 @@ export const updateConference = async (req: Request, res: Response) => {
 
 export const deleteConference = async (req: Request, res: Response) => {
     try {
-        await Conference.findByIdAndDelete(req.params.id);
+        const { error } = await supabase
+            .from('conferences')
+            .delete()
+            .eq('id', req.params.id);
+        
+        if (error) throw error;
         res.json({ message: 'Conference deleted' });
     } catch (error: any) {
         res.status(500).json({ message: error.message });

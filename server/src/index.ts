@@ -2,8 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import bcrypt from 'bcryptjs';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { supabase } from './supabase.js';
 
 import projectRoutes from './routes/ProjectRoutes.js';
 import experienceRoutes from './routes/ExperienceRoutes.js';
@@ -11,13 +10,6 @@ import educationRoutes from './routes/EducationRoutes.js';
 import skillRoutes from './routes/SkillRoutes.js';
 import conferenceRoutes from './routes/ConferenceRoutes.js';
 import authRoutes from './routes/AuthRoutes.js';
-
-import User from './models/User.js';
-import Project from './models/Project.js';
-import Experience from './models/Experience.js';
-import Education from './models/Education.js';
-import Skill from './models/Skill.js';
-import Conference from './models/Conference.js';
 
 dotenv.config();
 
@@ -36,112 +28,71 @@ app.use('/api/conferences', conferenceRoutes);
 app.use('/api/auth', authRoutes);
 
 app.get('/', (req, res) => {
-    res.send('Portfolio API is running with Zero-Config DB...');
+    res.send('Portfolio API is running with Supabase Backend...');
 });
 
 async function autoSeed() {
     try {
-        const userCount = await User.countDocuments();
-        if (userCount === 0) {
-            console.log('Seeding initial admin account...');
-            const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || '1234', 12);
-            await User.create({
-                username: process.env.ADMIN_USERNAME || 'onyx',
-                password: hashedPassword
-            });
-            console.log('Admin account created: onyx / 1234 (Default)');
+        const adminEmail = `${process.env.ADMIN_USERNAME || 'onyx'}@portfolio.com`;
+        const adminPass = process.env.ADMIN_PASSWORD || '1234';
 
-            // Seed initial data
-            if (await Project.countDocuments() === 0) {
-                await Project.insertMany([
-                    { title: "Proxy Catcher", description: "High performance network tool designed for capturing and analyzing proxy traffic.", tags: ["C++", "Networking", "Systems"] },
-                    { title: "Blood Prediction Model", description: "Machine learning model developed for predicting blood related health metrics and outcomes.", tags: ["Python", "ML", "HealthTech"] },
-                    { title: "Global Weather Analyzer", description: "Created a tool to analyze global weather patterns.", tags: ["Python", "Data Analysis"] },
-                    { title: "Onyx.h", description: "A C/C++ header library creation.", tags: ["C++", "Library"] },
-                    { title: "Dockerized Dev_Cluster", description: "Containerized development environment set up using Docker.", tags: ["Docker", "DevOps"] },
-                    { title: "learn_git", description: "A learning resource or tool associated with Git version control.", tags: ["Git", "Education"] },
-                    { title: "Open Source Contribution", description: "Active contributor to open source projects.", tags: ["Open Source", "Collaboration"] }
-                ]);
-            }
-
-            if (await Education.countDocuments() === 0) {
-                await Education.insertMany([
-                    { year: '2024 - Present', institution: 'Kantipur Engineering College', degree: 'Computer Engineering', description: 'Currently pursuing a degree in Computer Engineering.' },
-                    { year: '2022', institution: 'Urbana School of Science', degree: 'Science', description: 'Completed higher secondary education in Science.' },
-                    { year: '2013 - 2022', institution: 'The Excelsior School', degree: 'Schooling', description: 'Completed primary and secondary schooling.' }
-                ]);
-            }
-
-            if (await Experience.countDocuments() === 0) {
-                await Experience.insertMany([
-                    { title: 'AI ART Prompting Competition', year: '2024', description: 'Won the competition.', organization: 'N/A' },
-                    { title: 'AI Debate Competition', year: '2024', description: 'Participated as a competitor.', organization: 'N/A' },
-                    { title: 'Nova Hackathon', year: '2026', description: 'Attended the hackathon.', organization: 'N/A' }
-                ]);
-            }
-
-            if (await Skill.countDocuments() === 0) {
-                await Skill.insertMany([
-                    { name: 'Git/GitHub', category: 'Technical', level: 90 },
-                    { name: 'C/C++', category: 'Technical', level: 85 },
-                    { name: 'Docker', category: 'Technical', level: 80 },
-                    { name: 'Python', category: 'Technical', level: 85 },
-                    { name: 'HTML/CSS/JS', category: 'Technical', level: 90 },
-                    { name: 'Figma', category: 'Technical', level: 75 },
-                    { name: 'Canva', category: 'Technical', level: 70 },
-                    { name: 'Teamwork', category: 'Soft Skills', level: 95 },
-                    { name: 'Time Management', category: 'Soft Skills', level: 90 },
-                    { name: 'Effective Communication', category: 'Soft Skills', level: 90 },
-                    { name: 'Critical Thinking', category: 'Soft Skills', level: 85 },
-                    { name: 'Writing', category: 'Soft Skills', level: 80 },
-                    { name: 'Reading', category: 'Soft Skills', level: 85 }
-                ]);
-            }
-
-            if (await Conference.countDocuments() === 0) {
-                await Conference.insertMany([
-                    { name: 'Notion workshop' },
-                    { name: 'GDG conference 2025' },
-                    { name: 'AI/ML bootcamp at KEC' },
-                    { name: 'Bar Camp' },
-                    { name: 'AWS workshops' },
-                    { name: 'Antigenic AI workshop' },
-                    { name: 'UBUCON ASIA 2025' },
-                    { name: 'Azure and AWS cloud workshop' }
-                ]);
-            }
+        console.log(`Checking for admin account: ${adminEmail}...`);
+        
+        // Check if admin exists in Supabase (using listUsers admin API)
+        const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
+        
+        if (listError) {
+            console.error('Error listing users (check if SERVICE_ROLE_KEY is correct):', listError.message);
+            return;
         }
+
+        const adminExists = users.find(u => u.email === adminEmail);
+
+        if (!adminExists) {
+            console.log('Seeding initial Supabase admin account...');
+            const { error: createError } = await supabase.auth.admin.createUser({
+                email: adminEmail,
+                password: adminPass,
+                email_confirm: true,
+                user_metadata: { username: process.env.ADMIN_USERNAME || 'onyx' }
+            });
+
+            if (createError) {
+                console.error('Error creating admin user:', createError.message);
+            } else {
+                console.log(`Admin account created: ${process.env.ADMIN_USERNAME || 'onyx'} / ${adminPass}`);
+            }
+        } else {
+            console.log('Admin account already exists in Supabase.');
+        }
+
+        // Note: Seeding initial data (Projects, Skills, etc.) should be done 
+        // via the Supabase SQL editor or a separate migration script 
+        // since we are now using a persistent Postgres DB.
     } catch (err) {
         console.error('Auto-seeding error:', err);
     }
 }
 
 async function startServer() {
-    let mongoUri = process.env.MONGODB_URI;
-
-    try {
-        // Try connecting to provided URI first
-        if (mongoUri) {
-            await mongoose.connect(mongoUri);
-            console.log('Connected to External/Local MongoDB');
-        } else {
-            throw new Error('No MONGODB_URI provided');
+    // We no longer strictly need MongoDB for the main features, 
+    // but keeping it optional for any legacy parts.
+    if (process.env.MONGODB_URI) {
+        try {
+            await mongoose.connect(process.env.MONGODB_URI);
+            console.log('Connected to Legacy MongoDB (Optional)');
+        } catch (err) {
+            console.warn('Legacy MongoDB connection failed, proceeding with Supabase only.');
         }
-    } catch (err) {
-        console.log('Local/External MongoDB not found. Starting In-Memory Database...');
-        const mongod = await MongoMemoryServer.create();
-        mongoUri = mongod.getUri();
-        await mongoose.connect(mongoUri);
-        console.log('In-Memory MongoDB Started at:', mongoUri);
     }
 
     await autoSeed();
 
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
-        console.log('--- Terminal Admin Access ---');
-        console.log('Username: onyx');
-        console.log('Password: 1234 (unless changed in .env)');
+        console.log('--- Supabase Admin Access ---');
+        console.log(`Username: ${process.env.ADMIN_USERNAME || 'onyx'}`);
+        console.log(`Password: ${process.env.ADMIN_PASSWORD || '1234'}`);
         console.log('-----------------------------');
     });
 }
